@@ -140,6 +140,59 @@ func TestWorkspaceAccessAndCrossWorkspacePolicyMetadata(t *testing.T) {
 	}
 }
 
+func TestWorkspaceRouteIsolation(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	rootScreen, err := registry.Screen("/go-admin/posts")
+	if err != nil {
+		t.Fatalf("root CMS screen should resolve: %v", err)
+	}
+	if rootScreen.Record != "post" {
+		t.Fatalf("root CMS route resolved to %q, want post", rootScreen.Record)
+	}
+	if _, err := registry.Screen("/go-admin/spaces/sales/posts"); err == nil {
+		t.Fatalf("sales workspace must not expose root CMS resources")
+	}
+	if _, ok := registry.APIResource("/go-json/spaces/sales/posts"); ok {
+		t.Fatalf("sales workspace API must not expose root CMS resources")
+	}
+	if _, err := registry.Screen("/go-admin/crm/leads"); err == nil {
+		t.Fatalf("root admin must not expose sales CRM shortcut outside spaces overlay")
+	}
+}
+
+func TestRelationPoliciesDoNotAllowHiddenGlobalAccess(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	for _, policy := range registry.CrossWorkspacePolicySamples() {
+		if policy.CrossWorkspaceMode == "" {
+			t.Fatalf("cross-workspace policy must declare an explicit mode")
+		}
+		if policy.CrossWorkspaceMode == toolset.CrossWorkspaceRequiresCapability && policy.Capability == "" {
+			t.Fatalf("requires-capability policy must declare the required capability")
+		}
+	}
+}
+
+func TestResourceScreensPreserveOperationCapabilities(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	for path, binding := range registry.Screens {
+		if binding.Screen.Capability == "" {
+			t.Fatalf("%s rendered without list capability", path)
+		}
+		if binding.WorkspaceID == "sales" && binding.Screen.Capability != "crm.lead.read" && binding.Screen.Resource == "leads" {
+			t.Fatalf("sales leads screen capability = %q, want crm.lead.read", binding.Screen.Capability)
+		}
+	}
+}
+
 func TestBundledSEOAndOptimizeSpacesUseMonitoringModule(t *testing.T) {
 	registry, err := NewRegistry(WorkspacesFullProfile())
 	if err != nil {
