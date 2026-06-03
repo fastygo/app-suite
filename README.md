@@ -33,6 +33,7 @@ APPSUITE_PROFILE=crm-leads bun go
 - `headless`: API-first CMS profile.
 - `local-offline`: CRM profile with local/offline metadata.
 - `demo-suite`: CMS, CRM, and monitoring demo profile.
+- `optional-remote-services`: fixture profile for optional remote spaces.
 
 JSON profile fixtures live in `profiles/`.
 
@@ -67,3 +68,15 @@ Shared contacts and shared activity timeline plans are documented in
 `docs/shared-modules.md`. They are intentionally not implemented yet; ModuleCRM
 owns contacts and activities until real duplication appears across multiple
 product modules.
+
+## Remote Space Fixture
+
+AppSuite tests prove that an optional remote module can be added to the same
+workspace registry as compiled-in modules. The remote support fixture mounts at:
+
+```text
+/go-admin/spaces/remote-support
+/go-json/spaces/remote-support
+```
+
+The default runtime still uses bundled CMS, CRM, and monitoring modules.

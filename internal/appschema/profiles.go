@@ -85,6 +85,14 @@ func DemoSuiteProfile() profile.Profile {
 	return p
 }
 
+func OptionalRemoteServicesProfile() profile.Profile {
+	p := WorkspacesFullProfile()
+	p.ID = "optional-remote-services"
+	p.Title = "Optional Remote Services"
+	p.Workspaces = append(p.Workspaces, spaceWorkspace("remote-support", "Remote Support", "Optional remote support workspace served by an external module.", "radio", "operations", 60, CapabilityWorkspaceSupport, "support-remote"))
+	return p
+}
+
 func ProfileByID(id string) (profile.Profile, bool) {
 	switch id {
 	case "gocms-admin":
@@ -99,6 +107,8 @@ func ProfileByID(id string) (profile.Profile, bool) {
 		return LocalOfflineProfile(), true
 	case "demo-suite":
 		return DemoSuiteProfile(), true
+	case "optional-remote-services":
+		return OptionalRemoteServicesProfile(), true
 	default:
 		return profile.Profile{}, false
 	}

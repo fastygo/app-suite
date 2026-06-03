@@ -71,7 +71,11 @@ func NewDefaultRegistry() (*Registry, error) {
 }
 
 func NewRegistry(p profile.Profile) (*Registry, error) {
-	host, err := modulehost.New(modulecms.Module{}, modulecrm.Module{}, modulemonitoring.Module{})
+	return NewRegistryWithModules(p, defaultModules()...)
+}
+
+func NewRegistryWithModules(p profile.Profile, modules ...contracts.Module) (*Registry, error) {
+	host, err := modulehost.New(modules...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +114,10 @@ func NewRegistry(p profile.Profile) (*Registry, error) {
 		registry.indexWorkspace(runtime)
 	}
 	return registry, nil
+}
+
+func defaultModules() []contracts.Module {
+	return []contracts.Module{modulecms.Module{}, modulecrm.Module{}, modulemonitoring.Module{}}
 }
 
 func (r *Registry) ResolveAdmin(path string) (contracts.WorkspaceID, string, bool) {

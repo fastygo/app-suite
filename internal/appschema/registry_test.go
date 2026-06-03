@@ -5,7 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/fastygo/panel"
+	"github.com/fastygo/platform/pkg/contracts"
 	"github.com/fastygo/platform/pkg/profile"
+	"github.com/fastygo/platform/pkg/remote"
 	"github.com/fastygo/platform/pkg/toolset"
 )
 
@@ -134,5 +137,83 @@ func TestWorkspaceAccessAndCrossWorkspacePolicyMetadata(t *testing.T) {
 	}
 	if policies[1].CrossWorkspaceMode != toolset.CrossWorkspaceRequiresCapability {
 		t.Fatalf("expected requires-capability policy")
+	}
+}
+
+func TestBundledSEOAndOptimizeSpacesUseMonitoringModule(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	for _, workspaceID := range []contracts.WorkspaceID{"seo", "optimize"} {
+		workspace := registry.Workspaces[workspaceID]
+		if len(workspace.Workspace.Modules) != 1 || workspace.Workspace.Modules[0] != "monitoring" {
+			t.Fatalf("%s workspace modules = %v, want monitoring", workspaceID, workspace.Workspace.Modules)
+		}
+		if _, err := registry.Screen(workspace.AdminBase); err != nil {
+			t.Fatalf("%s workspace should render as a normal admin space: %v", workspaceID, err)
+		}
+	}
+}
+
+func TestOptionalRemoteSpaceAppearsAsNormalWorkspace(t *testing.T) {
+	remoteModule, err := remote.NewModule(remote.Descriptor{
+		ID:        "support-remote",
+		Name:      "Remote Support",
+		Version:   "0.1.0",
+		BaseURL:   "https://support.example.test",
+		HealthURL: "https://support.example.test/healthz",
+		SchemaURL: "https://support.example.test/schema",
+		Failure:   remote.FailureBehavior{Mode: remote.FailureReadOnly, Message: "Support service is degraded."},
+		Schema: remote.SchemaContribution{
+			Records: []toolset.RecordTypeDefinition{
+				{
+					ID:            "ticket",
+					Label:         "Ticket",
+					SchemaVersion: "support.remote.v1",
+					OwnerModule:   "support-remote",
+					Scope:         toolset.ScopeWorkspace,
+					Fields: []toolset.FieldDefinition{
+						{ID: "subject", Label: "Subject", Type: toolset.FieldText, Required: true},
+					},
+				},
+			},
+			Resources: []panel.Resource[contracts.CapabilityID]{
+				{
+					ID:       "tickets",
+					Label:    "Tickets",
+					Singular: "Ticket",
+					Plural:   "Tickets",
+					BasePath: "/go-admin/support/tickets",
+					Table: panel.TableSchema[contracts.CapabilityID]{
+						Columns: []panel.Column{{ID: "subject", Label: "Subject", Type: panel.ColumnText}},
+					},
+					Form: panel.FormSchema{
+						Fields: []panel.Field{{ID: "subject", Label: "Subject", Type: panel.FieldText}},
+					},
+					Detail: panel.DetailSchema{
+						Fields: []panel.Field{{ID: "subject", Label: "Subject", Type: panel.FieldText}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new remote module: %v", err)
+	}
+	modules := append(defaultModules(), remoteModule)
+	registry, err := NewRegistryWithModules(OptionalRemoteServicesProfile(), modules...)
+	if err != nil {
+		t.Fatalf("new registry with remote module: %v", err)
+	}
+	screen, err := registry.Screen("/go-admin/spaces/remote-support/support/tickets")
+	if err != nil {
+		t.Fatalf("remote support screen should resolve like normal workspace: %v", err)
+	}
+	if screen.Record != "ticket" {
+		t.Fatalf("remote screen record = %q, want ticket", screen.Record)
+	}
+	if _, ok := registry.APIResource("/go-json/spaces/remote-support/support/tickets"); !ok {
+		t.Fatalf("remote support API should resolve like normal workspace")
 	}
 }
