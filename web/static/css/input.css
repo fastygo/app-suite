@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+@source "../../../cmd/**/*.go";
+@source "../../../internal/**/*.go";
+@source "../../../internal/**/*.templ";
+@source "../../../../@Platform/pkg/renderers/**/*.templ";
+@source "../../../../@Templ/ui/**/*.templ";
+@source "../../../../@Templ/components/**/*.templ";

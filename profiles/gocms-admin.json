@@ -1,0 +1,21 @@
+{
+  "ID": "gocms-admin",
+  "Title": "GoCMS Admin",
+  "AdminBase": "/go-admin",
+  "APIBase": "/go-json",
+  "PublicBase": "/",
+  "Workspaces": [
+    {
+      "ID": "root",
+      "Title": "Content Admin",
+      "Description": "GoCMS root admin workspace.",
+      "Icon": "layout-dashboard",
+      "Category": "content",
+      "Order": 0,
+      "DefaultPath": "/go-admin",
+      "Capability": "workspace.root.access",
+      "Modules": ["cms"],
+      "Panels": [{"ID": "cms", "BasePath": "/go-admin", "Default": true}]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "ID": "local-offline",
+  "Title": "Local Offline CRM",
+  "AdminBase": "/go-admin",
+  "APIBase": "/go-json",
+  "PublicBase": "/",
+  "Workspaces": [
+    {
+      "ID": "root",
+      "Title": "CRM Leads",
+      "Description": "Local/offline CRM profile inspired by OfflineCRM datasets and snapshots.",
+      "Icon": "database",
+      "Category": "sales",
+      "Order": 0,
+      "DefaultPath": "/go-admin",
+      "Capability": "crm.offline.sync",
+      "Modules": ["crm"],
+      "Panels": [{"ID": "crm", "BasePath": "/go-admin", "Default": true}]
+    }
+  ]
+}

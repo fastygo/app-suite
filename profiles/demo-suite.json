@@ -1,0 +1,17 @@
+{
+  "ID": "demo-suite",
+  "Title": "Demo Suite",
+  "AdminBase": "/go-admin",
+  "APIBase": "/go-json",
+  "PublicBase": "/",
+  "SpacesAdminBase": "/go-admin/spaces",
+  "SpacesAPIBase": "/go-json/spaces",
+  "Workspaces": [
+    {"ID": "root", "Title": "Content Admin", "Description": "Root GoCMS admin workspace. This is not a user task space.", "Icon": "layout-dashboard", "Category": "content", "Order": 0, "DefaultPath": "/go-admin", "Capability": "workspace.root.access", "Modules": ["cms"], "Panels": [{"ID": "cms", "BasePath": "/go-admin", "Default": true}]},
+    {"ID": "sales", "Title": "Sales", "Description": "CRM leads and pipeline workspace.", "Icon": "pipeline", "Category": "business", "Order": 10, "DefaultPath": "/go-admin/spaces/sales", "Capability": "workspace.sales.access", "Modules": ["crm"], "Panels": [{"ID": "crm", "BasePath": "/go-admin/spaces/sales", "Default": true}]},
+    {"ID": "support", "Title": "Support", "Description": "Support and tickets placeholder workspace.", "Icon": "inbox", "Category": "operations", "Order": 20, "DefaultPath": "/go-admin/spaces/support", "Capability": "workspace.support.access", "Modules": ["crm"], "Panels": [{"ID": "crm", "BasePath": "/go-admin/spaces/support", "Default": true}]},
+    {"ID": "seo", "Title": "SEO", "Description": "SEO monitoring and content optimization workspace.", "Icon": "search", "Category": "growth", "Order": 30, "DefaultPath": "/go-admin/spaces/seo", "Capability": "workspace.seo.access", "Modules": ["monitoring"], "Panels": [{"ID": "monitoring", "BasePath": "/go-admin/spaces/seo", "Default": true}]},
+    {"ID": "optimize", "Title": "Optimize", "Description": "Performance and uptime monitoring workspace.", "Icon": "activity", "Category": "operations", "Order": 40, "DefaultPath": "/go-admin/spaces/optimize", "Capability": "workspace.optimize.access", "Modules": ["monitoring"], "Panels": [{"ID": "monitoring", "BasePath": "/go-admin/spaces/optimize", "Default": true}]},
+    {"ID": "ideas", "Title": "Ideas", "Description": "Ideas and notes workspace.", "Icon": "lightbulb", "Category": "growth", "Order": 50, "DefaultPath": "/go-admin/spaces/ideas", "Capability": "workspace.ideas.access", "Modules": ["crm"], "Panels": [{"ID": "crm", "BasePath": "/go-admin/spaces/ideas", "Default": true}]}
+  ]
+}

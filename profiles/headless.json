@@ -1,0 +1,21 @@
+{
+  "ID": "headless",
+  "Title": "Headless API",
+  "AdminBase": "/go-admin",
+  "APIBase": "/go-json",
+  "PublicBase": "/",
+  "Workspaces": [
+    {
+      "ID": "root",
+      "Title": "Headless Content API",
+      "Description": "API-first CMS profile with no required admin rendering route.",
+      "Icon": "braces",
+      "Category": "content",
+      "Order": 0,
+      "DefaultPath": "/go-json",
+      "Capability": "workspace.root.access",
+      "Modules": ["cms"],
+      "Panels": [{"ID": "cms", "BasePath": "/go-json", "Default": true}]
+    }
+  ]
+}

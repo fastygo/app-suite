@@ -1,0 +1,15 @@
+{
+  "name": "fastygo-app-suite",
+  "private": true,
+  "packageManager": "bun@1.3.3",
+  "scripts": {
+    "templ": "go tool templ generate ./...",
+    "build:css": "tailwindcss -i ./web/static/css/input.css -o ./web/static/css/app.css --minify",
+    "verify": "bun run templ && bun run build:css && go test ./...",
+    "go": "bun run templ && bun run build:css && go run ./cmd/server"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.2.1",
+    "tailwindcss": "^4.2.1"
+  }
+}
