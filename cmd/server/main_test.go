@@ -129,6 +129,22 @@ func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 			t.Fatalf("root discovery missing %q: %#v", key, root)
 		}
 	}
+	if strings.Contains(getOK(t, server, "/go-json/"), "/go-json/crm/v1/leads") {
+		t.Fatalf("AppSuite root API must not mount standalone CRM codex routes")
+	}
+	sales := getJSONMap(t, server, "/go-json/spaces/sales")
+	for _, key := range []string{"profile", "workspace", "api_base", "admin_base", "assembly_path", "resources"} {
+		if _, ok := sales[key]; !ok {
+			t.Fatalf("sales discovery missing %q: %#v", key, sales)
+		}
+	}
+	if sales["workspace"] != "sales" || sales["api_base"] != "/go-json/spaces/sales" || sales["admin_base"] != "/go-admin/spaces/sales" {
+		t.Fatalf("unexpected sales discovery bases: %#v", sales)
+	}
+	salesBody := getOK(t, server, "/go-json/spaces/sales")
+	if !strings.Contains(salesBody, "/go-json/spaces/sales/crm/leads") {
+		t.Fatalf("sales discovery must list rebased CRM leads resource: %s", salesBody)
+	}
 	list := getJSONMap(t, server, "/go-json/spaces/sales/crm/leads")
 	for _, key := range []string{"data", "resource", "workspace", "record", "total", "cross_space", "required_cap", "renderer_view"} {
 		if _, ok := list[key]; !ok {
@@ -138,8 +154,20 @@ func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 	if list["workspace"] != "sales" || list["record"] != "lead" {
 		t.Fatalf("unexpected sales list envelope: %#v", list)
 	}
+	if !strings.HasPrefix(list["required_cap"].(string), "crm.") {
+		t.Fatalf("expected CRM namespaced capability: %#v", list)
+	}
 
-	resp, err := http.Get(server.URL + "/go-json/spaces/sales/unknown")
+	resp, err := http.Get(server.URL + "/go-json/crm/v1/leads")
+	if err != nil {
+		t.Fatalf("get standalone CRM API route: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("AppSuite must not mount standalone CRM API at root, got %d", resp.StatusCode)
+	}
+
+	resp, err = http.Get(server.URL + "/go-json/spaces/sales/unknown")
 	if err != nil {
 		t.Fatalf("get unknown API route: %v", err)
 	}
