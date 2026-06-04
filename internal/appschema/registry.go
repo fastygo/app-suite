@@ -58,6 +58,7 @@ type WorkspaceItem struct {
 type WorkspaceSwitcherModel struct {
 	CurrentWorkspaceID contracts.WorkspaceID
 	RootAdminLink      string
+	DirectoryLink      string
 	CurrentTitle       string
 	CurrentIcon        string
 	CurrentCategory    string
@@ -187,6 +188,7 @@ func (r *Registry) Switcher(current contracts.WorkspaceID) WorkspaceSwitcherMode
 	model := WorkspaceSwitcherModel{
 		CurrentWorkspaceID: current,
 		RootAdminLink:      strings.TrimRight(r.Profile.AdminBase, "/") + "/",
+		DirectoryLink:      strings.TrimRight(r.Profile.SpacesAdminBase, "/"),
 		Available:          r.spaceItems(),
 	}
 	if workspace, ok := r.Workspaces[current]; ok {

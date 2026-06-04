@@ -3,6 +3,7 @@ package appschema
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fastygo/platform/pkg/contracts"
@@ -82,6 +83,37 @@ func TestWorkspacesFullUsesSpacesOverlaySemantics(t *testing.T) {
 	}
 }
 
+func TestCustomSpacesBasesResolveFromProfile(t *testing.T) {
+	p := WorkspacesFullProfile()
+	p.ID = "custom-suite"
+	p.AdminBase = "/y-admin"
+	p.APIBase = "/y-json"
+	p.SpacesAdminBase = "/y-admin/areas"
+	p.SpacesAPIBase = "/y-json/areas"
+	registry, err := NewRegistry(p)
+	if err != nil {
+		t.Fatalf("new custom registry: %v", err)
+	}
+	if workspace, base, ok := registry.ResolveAdmin("/y-admin"); !ok || workspace != "root" || base != "/y-admin" {
+		t.Fatalf("custom root admin did not resolve: workspace=%q base=%q ok=%v", workspace, base, ok)
+	}
+	if workspace, base, ok := registry.ResolveAdmin("/y-admin/areas/sales"); !ok || workspace != "sales" || base != "/y-admin/areas/sales" {
+		t.Fatalf("custom sales admin did not resolve: workspace=%q base=%q ok=%v", workspace, base, ok)
+	}
+	if workspace, base, ok := registry.ResolveAPI("/y-json/areas/sales"); !ok || workspace != "sales" || base != "/y-json/areas/sales" {
+		t.Fatalf("custom sales API did not resolve: workspace=%q base=%q ok=%v", workspace, base, ok)
+	}
+	if _, _, ok := registry.ResolveAdmin("/go-admin"); ok {
+		t.Fatalf("custom suite profile must not also mount default /go-admin")
+	}
+	if _, err := registry.Screen("/y-admin/areas/sales/crm/leads"); err != nil {
+		t.Fatalf("custom sales CRM screen should resolve: %v", err)
+	}
+	if _, ok := registry.APIResource("/y-json/areas/sales/crm/leads"); !ok {
+		t.Fatalf("custom sales CRM API should resolve")
+	}
+}
+
 func TestSingleAndMultiWorkspaceProfilesUseSameAssemblyPath(t *testing.T) {
 	single, err := NewRegistry(CRMLeadsProfile())
 	if err != nil {
@@ -99,6 +131,33 @@ func TestSingleAndMultiWorkspaceProfilesUseSameAssemblyPath(t *testing.T) {
 	}
 	if len(multi.Assemblies) < 2 {
 		t.Fatalf("multi profile should assemble multiple workspaces")
+	}
+}
+
+func TestProductBundleScreensCarryRenderingContext(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	for _, tc := range []struct {
+		path      string
+		workspace string
+		adminBase string
+		apiBase   string
+	}{
+		{path: "/go-admin/posts", workspace: "root", adminBase: "/go-admin", apiBase: "/go-json"},
+		{path: "/go-admin/spaces/sales/crm/leads", workspace: "sales", adminBase: "/go-admin/spaces/sales", apiBase: "/go-json/spaces/sales"},
+		{path: "/go-admin/spaces/sales/crm/leads/kanban", workspace: "sales", adminBase: "/go-admin/spaces/sales", apiBase: "/go-json/spaces/sales"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			screen, err := registry.Screen(tc.path)
+			if err != nil {
+				t.Fatalf("screen should resolve: %v", err)
+			}
+			if screen.Metadata["workspace_id"] != tc.workspace || screen.Metadata["admin_base"] != tc.adminBase || screen.Metadata["api_base"] != tc.apiBase {
+				t.Fatalf("unexpected rendering context metadata: %#v", screen.Metadata)
+			}
+		})
 	}
 }
 
@@ -143,6 +202,35 @@ func TestSalesWorkspaceResolvesCRMCustomPages(t *testing.T) {
 	}
 }
 
+func TestCapabilityIDsAreNamespaceSafe(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	for _, runtime := range registry.Workspaces {
+		if !isAllowedCapability(runtime.Workspace.Capability) {
+			t.Fatalf("workspace %s capability %q is not namespace-safe", runtime.Workspace.ID, runtime.Workspace.Capability)
+		}
+		for _, capability := range runtime.Assembly.Context.RegisteredCapabilities {
+			if !isAllowedCapability(capability.ID) {
+				t.Fatalf("workspace %s registered capability %q is not namespace-safe", runtime.Workspace.ID, capability.ID)
+			}
+		}
+		for _, resource := range runtime.Assembly.Context.Resources {
+			for _, capability := range resource.Capabilities {
+				if !isAllowedCapability(capability.Capability) {
+					t.Fatalf("workspace %s resource %s capability %q is not namespace-safe", runtime.Workspace.ID, resource.ID, capability.Capability)
+				}
+			}
+		}
+		for _, page := range runtime.Assembly.Context.Pages {
+			if !isAllowedCapability(page.Capability) {
+				t.Fatalf("workspace %s page %s capability %q is not namespace-safe", runtime.Workspace.ID, page.ID, page.Capability)
+			}
+		}
+	}
+}
+
 func TestWorkspaceAccessAndCrossWorkspacePolicyMetadata(t *testing.T) {
 	registry, err := NewRegistry(WorkspacesFullProfile())
 	if err != nil {
@@ -161,6 +249,33 @@ func TestWorkspaceAccessAndCrossWorkspacePolicyMetadata(t *testing.T) {
 	}
 	if policies[1].CrossWorkspaceMode != toolset.CrossWorkspaceRequiresCapability {
 		t.Fatalf("expected requires-capability policy")
+	}
+}
+
+func isAllowedCapability(capability contracts.CapabilityID) bool {
+	value := string(capability)
+	if value == "" {
+		return true
+	}
+	for _, prefix := range []string{"crm.", "workspace.", "monitoring."} {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	switch value {
+	case "admin.access",
+		"content.read",
+		"content.write",
+		"content.read_private",
+		"media.upload",
+		"media.edit",
+		"taxonomies.manage",
+		"taxonomies.assign",
+		"users.manage",
+		"settings.manage":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -95,7 +95,7 @@ func Page(title string, screen render.ScreenModel, switcher appschema.WorkspaceS
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = NavLink("/go-admin/spaces", "Workspace directory").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = NavLink(switcher.DirectoryLink, "Workspace directory").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -203,7 +203,7 @@ func WorkspaceDirectory(model appschema.WorkspaceDirectoryModel, switcher appsch
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = NavLink("/go-admin/spaces", "Workspace directory").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = NavLink(switcher.DirectoryLink, "Workspace directory").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

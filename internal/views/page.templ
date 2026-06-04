@@ -26,7 +26,7 @@ templ Page(title string, screen render.ScreenModel, switcher appschema.Workspace
 					</div>
 					<nav class="space-y-1 text-sm">
 						@NavLink(switcher.RootAdminLink, "Root admin")
-						@NavLink("/go-admin/spaces", "Workspace directory")
+						@NavLink(switcher.DirectoryLink, "Workspace directory")
 					</nav>
 					if len(switcher.Available) > 0 {
 						<div class="mt-6 space-y-2">
@@ -68,7 +68,7 @@ templ WorkspaceDirectory(model appschema.WorkspaceDirectoryModel, switcher appsc
 					<a class="mb-6 block text-lg font-semibold" href={ templ.SafeURL(switcher.RootAdminLink) }>AppSuite</a>
 					<nav class="space-y-1 text-sm">
 						@NavLink(switcher.RootAdminLink, "Root admin")
-						@NavLink("/go-admin/spaces", "Workspace directory")
+						@NavLink(switcher.DirectoryLink, "Workspace directory")
 					</nav>
 				</aside>
 				<main class="flex-1 p-6">

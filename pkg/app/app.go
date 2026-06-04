@@ -83,14 +83,18 @@ func (f feature) Routes(mux *http.ServeMux) {
 }
 
 func registerRoutes(mux *http.ServeMux, registry *appschema.Registry) {
+	adminBase := normalizeBase(registry.Profile.AdminBase, "/go-admin")
+	apiBase := normalizeBase(registry.Profile.APIBase, "/go-json")
+	spacesAdminBase := normalizeBase(registry.Profile.SpacesAdminBase, joinPath(adminBase, "/spaces"))
+	spacesAPIBase := normalizeBase(registry.Profile.SpacesAPIBase, joinPath(apiBase, "/spaces"))
 	mux.HandleFunc("GET /{$}", renderHome(registry))
-	mux.HandleFunc("GET /go-admin/{$}", renderAdmin(registry))
-	mux.HandleFunc("GET /go-admin/spaces/{$}", renderWorkspaceDirectory(registry))
-	mux.HandleFunc("GET /go-admin/spaces/{path...}", renderAdmin(registry))
-	mux.HandleFunc("GET /go-admin/{path...}", renderAdmin(registry))
-	mux.HandleFunc("GET /go-json/{$}", renderAPIRoot(registry))
-	mux.HandleFunc("GET /go-json/spaces/{path...}", renderSpaceAPI(registry))
-	mux.HandleFunc("GET /go-json/{path...}", renderRootAPI(registry))
+	mux.HandleFunc("GET "+routePattern(adminBase, "/"), renderAdmin(registry))
+	mux.HandleFunc("GET "+routePattern(spacesAdminBase, "/"), renderWorkspaceDirectory(registry))
+	mux.HandleFunc("GET "+routePattern(spacesAdminBase, "/{path...}"), renderAdmin(registry))
+	mux.HandleFunc("GET "+routePattern(adminBase, "/{path...}"), renderAdmin(registry))
+	mux.HandleFunc("GET "+routePattern(apiBase, "/"), renderAPIRoot(registry))
+	mux.HandleFunc("GET "+routePattern(spacesAPIBase, "/{path...}"), renderSpaceAPI(registry))
+	mux.HandleFunc("GET "+routePattern(apiBase, "/{path...}"), renderRootAPI(registry))
 }
 
 func renderHome(registry *appschema.Registry) http.HandlerFunc {
@@ -269,6 +273,42 @@ func repoRoot() (string, error) {
 		}
 		dir = parent
 	}
+}
+
+func normalizeBase(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = fallback
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	value = strings.TrimRight(value, "/")
+	if value == "" {
+		return "/"
+	}
+	return value
+}
+
+func joinPath(base string, path string) string {
+	base = normalizeBase(base, "/")
+	path = strings.TrimSpace(path)
+	if path == "" || path == "/" {
+		return base
+	}
+	path = "/" + strings.Trim(path, "/")
+	if base == "/" {
+		return path
+	}
+	return strings.TrimRight(base, "/") + path
+}
+
+func routePattern(base string, suffix string) string {
+	joined := joinPath(base, suffix)
+	if strings.HasSuffix(suffix, "{path...}") {
+		return joined
+	}
+	return strings.TrimRight(joined, "/") + "/{$}"
 }
 
 type unknownProfileError string
