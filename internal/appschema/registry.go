@@ -5,12 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	modulecms "github.com/fastygo/module-cms"
-	modulecrm "github.com/fastygo/module-crm"
-	modulemonitoring "github.com/fastygo/module-monitoring"
-	"github.com/fastygo/panel"
+	"github.com/fastygo/app-suite/pkg/compose"
 	"github.com/fastygo/platform/pkg/contracts"
 	"github.com/fastygo/platform/pkg/modulehost"
+	"github.com/fastygo/platform/pkg/panel"
 	"github.com/fastygo/platform/pkg/profile"
 	"github.com/fastygo/platform/pkg/render"
 	"github.com/fastygo/platform/pkg/toolset"
@@ -117,7 +115,7 @@ func NewRegistryWithModules(p profile.Profile, modules ...contracts.Module) (*Re
 }
 
 func defaultModules() []contracts.Module {
-	return []contracts.Module{modulecms.Module{}, modulecrm.Module{}, modulemonitoring.Module{}}
+	return compose.DefaultModules()
 }
 
 func (r *Registry) ResolveAdmin(path string) (contracts.WorkspaceID, string, bool) {
@@ -227,6 +225,18 @@ func (r *Registry) indexWorkspace(workspace WorkspaceRuntime) {
 		r.Screens[adminPath] = ScreenBinding{WorkspaceID: workspace.Workspace.ID, Resource: resource, Record: record, Screen: screen}
 		r.APIScreens[workspacePath(workspace.APIBase, resource.BasePath)] = r.Screens[adminPath]
 	}
+	for _, page := range workspace.Assembly.Context.Pages {
+		resource := resourceForPage(page, workspace.Assembly.Context.Resources)
+		record := recordFor(resource, workspace.Assembly.Context.Records)
+		adminPath := workspacePath(workspace.AdminBase, page.Path)
+		screen := screenForPage(page, resource, record)
+		screen.Metadata = copyMetadata(screen.Metadata)
+		screen.Metadata["workspace_id"] = string(workspace.Workspace.ID)
+		screen.Metadata["admin_base"] = workspace.AdminBase
+		screen.Metadata["api_base"] = workspace.APIBase
+		r.Screens[adminPath] = ScreenBinding{WorkspaceID: workspace.Workspace.ID, Resource: resource, Record: record, Screen: screen}
+		r.APIScreens[workspacePath(workspace.APIBase, page.Path)] = r.Screens[adminPath]
+	}
 }
 
 func (r *Registry) spaceItems() []WorkspaceItem {
@@ -295,14 +305,52 @@ func recordFor(resource panel.Resource[contracts.CapabilityID], records []toolse
 	return toolset.RecordTypeDefinition{ID: toolset.RecordTypeID(resource.ID), Label: resource.Label}
 }
 
+func resourceForPage(page panel.Page[contracts.CapabilityID], resources []panel.Resource[contracts.CapabilityID]) panel.Resource[contracts.CapabilityID] {
+	for _, resource := range resources {
+		if strings.HasPrefix(strings.TrimRight(page.Path, "/"), strings.TrimRight(resource.BasePath, "/")) {
+			return resource
+		}
+	}
+	if len(resources) > 0 {
+		return resources[0]
+	}
+	return panel.Resource[contracts.CapabilityID]{ID: panel.ResourceID(page.ID), Label: page.Title, BasePath: page.Path, Table: page.Table}
+}
+
+func screenForPage(page panel.Page[contracts.CapabilityID], resource panel.Resource[contracts.CapabilityID], record toolset.RecordTypeDefinition) render.ScreenModel {
+	screen := render.ScreenModel{
+		ID:         string(page.ID),
+		Title:      page.Title,
+		View:       render.ViewTable,
+		Record:     record.ID,
+		Resource:   resource.ID,
+		Columns:    page.Table.Columns,
+		Fields:     page.Form.Fields,
+		Capability: page.Capability,
+		Metadata:   map[string]string{},
+	}
+	if screen.Capability == "" {
+		screen.Capability = capabilityFor(resource, panel.OperationList)
+	}
+	switch page.ID {
+	case "lead-kanban":
+		screen.View = render.ViewKanban
+		screen.Fallback = render.ViewTable
+		screen.Metadata["group_field"] = "stage"
+	case "lead-detail":
+		screen.View = render.ViewType("detail")
+	}
+	return screen
+}
+
 func workspaceDashboard(workspace profile.Workspace) render.ScreenModel {
 	title := workspace.Title
 	if len(workspace.Modules) > 0 {
 		switch workspace.Modules[0] {
 		case "cms":
-			return modulecms.DashboardScreen()
+			title = "GoCMS Admin"
 		case "crm":
-			return modulecrm.DashboardScreen()
+			title = "CRM Leads"
 		}
 	}
 	return render.ScreenModel{
@@ -314,6 +362,15 @@ func workspaceDashboard(workspace profile.Workspace) render.ScreenModel {
 			"workspace": string(workspace.ID),
 		},
 	}
+}
+
+func capabilityFor(resource panel.Resource[contracts.CapabilityID], operation panel.ResourceOperation) contracts.CapabilityID {
+	for _, capability := range resource.Capabilities {
+		if capability.Operation == operation {
+			return capability.Capability
+		}
+	}
+	return ""
 }
 
 func copyMetadata(metadata map[string]string) map[string]string {

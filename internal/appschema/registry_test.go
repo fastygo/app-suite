@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fastygo/panel"
 	"github.com/fastygo/platform/pkg/contracts"
+	"github.com/fastygo/platform/pkg/panel"
 	"github.com/fastygo/platform/pkg/profile"
 	"github.com/fastygo/platform/pkg/remote"
 	"github.com/fastygo/platform/pkg/toolset"
@@ -116,6 +116,30 @@ func TestSalesWorkspaceResolvesCRMResources(t *testing.T) {
 	}
 	if binding, ok := registry.APIResource("/go-json/spaces/sales/crm/leads"); !ok || binding.WorkspaceID != "sales" {
 		t.Fatalf("expected sales CRM API resource")
+	}
+}
+
+func TestSalesWorkspaceResolvesCRMCustomPages(t *testing.T) {
+	registry, err := NewRegistry(WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	kanban, err := registry.Screen("/go-admin/spaces/sales/crm/leads/kanban")
+	if err != nil {
+		t.Fatalf("resolve sales kanban screen: %v", err)
+	}
+	if kanban.View != "kanban" || kanban.Metadata["group_field"] != "stage" {
+		t.Fatalf("unexpected kanban screen %#v", kanban)
+	}
+	detail, err := registry.Screen("/go-admin/spaces/sales/crm/leads/detail")
+	if err != nil {
+		t.Fatalf("resolve sales detail screen: %v", err)
+	}
+	if detail.View != "detail" || detail.Record != "lead" {
+		t.Fatalf("unexpected detail screen %#v", detail)
+	}
+	if _, ok := registry.APIResource("/go-json/spaces/sales/crm/leads/kanban"); !ok {
+		t.Fatalf("expected sales kanban API resource")
 	}
 }
 

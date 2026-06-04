@@ -11,6 +11,12 @@ profile.Profile -> modulehost.Assemble(profile) -> workspace registry -> routes
 
 There is no `monolith/spaces` runtime switch.
 
+AppSuite is the launcher assembly. It imports reusable app bundles from
+`github.com/fastygo/app-gocms/pkg/app` and `github.com/fastygo/app-crm/pkg/app`,
+mounts AppCMS in the root workspace, and mounts AppCRM-style products as spaces.
+CMS and CRM templates stay with their source apps; AppSuite owns only launcher
+chrome such as the workspace switcher and space directory.
+
 ## Commands
 
 ```bash

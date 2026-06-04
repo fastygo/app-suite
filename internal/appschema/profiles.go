@@ -1,6 +1,8 @@
 package appschema
 
 import (
+	crmapp "github.com/fastygo/app-crm/pkg/app"
+	gocmsapp "github.com/fastygo/app-gocms/pkg/app"
 	"github.com/fastygo/platform/pkg/contracts"
 	"github.com/fastygo/platform/pkg/profile"
 )
@@ -15,29 +17,11 @@ const (
 )
 
 func GoCMSAdminProfile() profile.Profile {
-	return profile.Profile{
-		ID:         "gocms-admin",
-		Title:      "GoCMS Admin",
-		AdminBase:  "/go-admin",
-		APIBase:    "/go-json",
-		PublicBase: "/",
-		Workspaces: []profile.Workspace{
-			rootWorkspace("root", "Content Admin", "GoCMS root admin workspace.", "layout-dashboard", "content", "cms"),
-		},
-	}
+	return gocmsapp.DefaultProfile()
 }
 
 func CRMLeadsProfile() profile.Profile {
-	return profile.Profile{
-		ID:         "crm-leads",
-		Title:      "CRM Leads",
-		AdminBase:  "/go-admin",
-		APIBase:    "/go-json",
-		PublicBase: "/",
-		Workspaces: []profile.Workspace{
-			rootWorkspace("root", "CRM Leads", "Standalone CRM leads workspace.", "pipeline", "sales", "crm"),
-		},
-	}
+	return crmapp.DefaultProfile()
 }
 
 func WorkspacesFullProfile() profile.Profile {

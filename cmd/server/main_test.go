@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fastygo/app-suite/internal/appschema"
+	suiteapp "github.com/fastygo/app-suite/pkg/app"
 )
 
 func TestAppSuiteSmokeRoutes(t *testing.T) {
@@ -15,7 +16,7 @@ func TestAppSuiteSmokeRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
-	server := httptest.NewServer(newMux("../../web/static", registry))
+	server := httptest.NewServer(suiteapp.NewMux(suiteapp.Options{StaticDir: "../../web/static", Registry: registry}))
 	defer server.Close()
 
 	for _, tc := range []struct {
@@ -56,7 +57,7 @@ func TestInvalidSpaceShortcutDoesNotResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
-	server := httptest.NewServer(newMux("../../web/static", registry))
+	server := httptest.NewServer(suiteapp.NewMux(suiteapp.Options{StaticDir: "../../web/static", Registry: registry}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/go-admin/sales")
