@@ -1,15 +1,21 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/fastygo/app-suite/internal/appschema"
 	"github.com/fastygo/app-suite/internal/views"
+	frameworkapp "github.com/fastygo/framework/pkg/app"
+	"github.com/fastygo/framework/pkg/web/security"
 	"github.com/fastygo/platform/pkg/contracts"
 )
 
@@ -20,39 +26,63 @@ type Options struct {
 }
 
 func Run() error {
-	addr := envOr("ADDR", "127.0.0.1:8080")
-	profileID := envOr("APPSUITE_PROFILE", "gocms-workspaces-full")
-	p, ok := appschema.ProfileByID(profileID)
-	if !ok {
-		return unknownProfileError(profileID)
-	}
-	root, err := repoRoot()
+	application, err := NewApp(Options{})
 	if err != nil {
 		return err
 	}
-	registry, err := appschema.NewRegistry(p)
-	if err != nil {
+	log.Printf("app-suite http://%s/", application.Config().AppBind)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := application.Run(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-	log.Printf("app-suite preview http://%s/ profile=%s", addr, p.ID)
-	return http.ListenAndServe(addr, NewMux(Options{
-		Addr:      addr,
-		StaticDir: filepath.Join(root, "web", "static"),
-		Registry:  registry,
-	}))
+	return nil
+}
+
+func NewApp(options Options) (*frameworkapp.App, error) {
+	registry, err := registryFromOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := frameworkConfig(options)
+	if err != nil {
+		return nil, err
+	}
+	return frameworkapp.New(cfg).
+		WithSecurity(security.LoadConfig()).
+		WithHealthEndpoints(cfg.HealthLivePath, cfg.HealthReadyPath).
+		WithFeature(feature{registry: registry}).
+		Build(), nil
 }
 
 func NewMux(options Options) *http.ServeMux {
-	registry := options.Registry
-	if registry == nil {
-		var err error
-		registry, err = appschema.NewDefaultRegistry()
-		if err != nil {
-			panic(err)
-		}
+	registry, err := registryFromOptions(options)
+	if err != nil {
+		panic(err)
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(options.StaticDir))))
+	registerRoutes(mux, registry)
+	return mux
+}
+
+type feature struct {
+	registry *appschema.Registry
+}
+
+func (f feature) ID() string {
+	return "app-suite"
+}
+
+func (f feature) NavItems() []frameworkapp.NavItem {
+	return nil
+}
+
+func (f feature) Routes(mux *http.ServeMux) {
+	registerRoutes(mux, f.registry)
+}
+
+func registerRoutes(mux *http.ServeMux, registry *appschema.Registry) {
 	mux.HandleFunc("GET /{$}", renderHome(registry))
 	mux.HandleFunc("GET /go-admin/{$}", renderAdmin(registry))
 	mux.HandleFunc("GET /go-admin/spaces/{$}", renderWorkspaceDirectory(registry))
@@ -61,7 +91,6 @@ func NewMux(options Options) *http.ServeMux {
 	mux.HandleFunc("GET /go-json/{$}", renderAPIRoot(registry))
 	mux.HandleFunc("GET /go-json/spaces/{path...}", renderSpaceAPI(registry))
 	mux.HandleFunc("GET /go-json/{path...}", renderRootAPI(registry))
-	return mux
 }
 
 func renderHome(registry *appschema.Registry) http.HandlerFunc {
@@ -182,11 +211,47 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func envOr(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func registryFromOptions(options Options) (*appschema.Registry, error) {
+	if options.Registry != nil {
+		return options.Registry, nil
 	}
-	return fallback
+	profileID := "gocms-workspaces-full"
+	if value := os.Getenv("APPSUITE_PROFILE"); value != "" {
+		profileID = value
+	}
+	p, ok := appschema.ProfileByID(profileID)
+	if !ok {
+		return nil, unknownProfileError(profileID)
+	}
+	return appschema.NewRegistry(p)
+}
+
+func frameworkConfig(options Options) (frameworkapp.Config, error) {
+	cfg, err := frameworkapp.LoadConfig()
+	if err != nil {
+		return frameworkapp.Config{}, err
+	}
+	if options.Addr != "" {
+		cfg.AppBind = options.Addr
+	} else if addr := os.Getenv("ADDR"); addr != "" {
+		cfg.AppBind = addr
+	}
+	if options.StaticDir != "" {
+		cfg.StaticDir = options.StaticDir
+	} else if os.Getenv("APP_STATIC_DIR") == "" {
+		root, err := repoRoot()
+		if err != nil {
+			return frameworkapp.Config{}, err
+		}
+		cfg.StaticDir = filepath.Join(root, "web", "static")
+	}
+	if cfg.HealthLivePath == "" {
+		cfg.HealthLivePath = "/healthz"
+	}
+	if cfg.HealthReadyPath == "" {
+		cfg.HealthReadyPath = "/readyz"
+	}
+	return cfg, nil
 }
 
 func repoRoot() (string, error) {

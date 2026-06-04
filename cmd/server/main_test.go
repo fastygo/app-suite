@@ -16,7 +16,11 @@ func TestAppSuiteSmokeRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
-	server := httptest.NewServer(suiteapp.NewMux(suiteapp.Options{StaticDir: "../../web/static", Registry: registry}))
+	application, err := suiteapp.NewApp(suiteapp.Options{Addr: "127.0.0.1:0", StaticDir: "../../web/static", Registry: registry})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+	server := httptest.NewServer(application)
 	defer server.Close()
 
 	for _, tc := range []struct {
@@ -57,7 +61,11 @@ func TestInvalidSpaceShortcutDoesNotResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
-	server := httptest.NewServer(suiteapp.NewMux(suiteapp.Options{StaticDir: "../../web/static", Registry: registry}))
+	application, err := suiteapp.NewApp(suiteapp.Options{Addr: "127.0.0.1:0", StaticDir: "../../web/static", Registry: registry})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+	server := httptest.NewServer(application)
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/go-admin/sales")
@@ -67,5 +75,29 @@ func TestInvalidSpaceShortcutDoesNotResolve(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected shortcut to be rejected, got %d", resp.StatusCode)
+	}
+}
+
+func TestFrameworkHealthEndpoints(t *testing.T) {
+	registry, err := appschema.NewRegistry(appschema.WorkspacesFullProfile())
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	application, err := suiteapp.NewApp(suiteapp.Options{Addr: "127.0.0.1:0", StaticDir: "../../web/static", Registry: registry})
+	if err != nil {
+		t.Fatalf("new app: %v", err)
+	}
+	server := httptest.NewServer(application)
+	defer server.Close()
+
+	for _, path := range []string{"/healthz", "/readyz"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("get %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected %s 200, got %d", path, resp.StatusCode)
+		}
 	}
 }

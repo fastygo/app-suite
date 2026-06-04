@@ -6,6 +6,7 @@ require (
 	github.com/a-h/templ v0.3.1001
 	github.com/fastygo/app-crm v0.0.0
 	github.com/fastygo/app-gocms v0.0.0
+	github.com/fastygo/framework v0.0.0
 	github.com/fastygo/module-monitoring v0.0.0
 	github.com/fastygo/platform v0.0.0
 )
@@ -31,6 +32,8 @@ require (
 replace github.com/fastygo/app-crm => ../@AppCRM
 
 replace github.com/fastygo/app-gocms => ../@AppCMS
+
+replace github.com/fastygo/framework => ../@Framework
 
 replace github.com/fastygo/module-monitoring => ../@ModuleMonitoring
 
