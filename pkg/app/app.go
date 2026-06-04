@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -11,18 +12,22 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/fastygo/app-suite/internal/appschema"
+	"github.com/fastygo/app-suite/internal/policy"
 	"github.com/fastygo/app-suite/internal/views"
 	frameworkapp "github.com/fastygo/framework/pkg/app"
+	frameworkauth "github.com/fastygo/framework/pkg/auth"
 	"github.com/fastygo/framework/pkg/web/security"
 	"github.com/fastygo/platform/pkg/contracts"
 )
 
 type Options struct {
-	Addr      string
-	StaticDir string
-	Registry  *appschema.Registry
+	Addr       string
+	StaticDir  string
+	Registry   *appschema.Registry
+	SessionKey string
 }
 
 func Run() error {
@@ -48,10 +53,11 @@ func NewApp(options Options) (*frameworkapp.App, error) {
 	if err != nil {
 		return nil, err
 	}
+	authBoundary := authFromOptions(options, cfg, registry)
 	return frameworkapp.New(cfg).
 		WithSecurity(security.LoadConfig()).
 		WithHealthEndpoints(cfg.HealthLivePath, cfg.HealthReadyPath).
-		WithFeature(feature{registry: registry}).
+		WithFeature(feature{registry: registry, auth: authBoundary}).
 		Build(), nil
 }
 
@@ -62,12 +68,17 @@ func NewMux(options Options) *http.ServeMux {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(options.StaticDir))))
-	registerRoutes(mux, registry)
+	cfg, err := frameworkConfig(options)
+	if err != nil {
+		panic(err)
+	}
+	registerRoutes(mux, registry, authFromOptions(options, cfg, registry))
 	return mux
 }
 
 type feature struct {
 	registry *appschema.Registry
+	auth     authBoundary
 }
 
 func (f feature) ID() string {
@@ -79,22 +90,26 @@ func (f feature) NavItems() []frameworkapp.NavItem {
 }
 
 func (f feature) Routes(mux *http.ServeMux) {
-	registerRoutes(mux, f.registry)
+	registerRoutes(mux, f.registry, f.auth)
 }
 
-func registerRoutes(mux *http.ServeMux, registry *appschema.Registry) {
+func registerRoutes(mux *http.ServeMux, registry *appschema.Registry, authBoundary authBoundary) {
 	adminBase := normalizeBase(registry.Profile.AdminBase, "/go-admin")
 	apiBase := normalizeBase(registry.Profile.APIBase, "/go-json")
 	spacesAdminBase := normalizeBase(registry.Profile.SpacesAdminBase, joinPath(adminBase, "/spaces"))
 	spacesAPIBase := normalizeBase(registry.Profile.SpacesAPIBase, joinPath(apiBase, "/spaces"))
 	mux.HandleFunc("GET /{$}", renderHome(registry))
-	mux.HandleFunc("GET "+routePattern(adminBase, "/"), renderAdmin(registry))
-	mux.HandleFunc("GET "+routePattern(spacesAdminBase, "/"), renderWorkspaceDirectory(registry))
-	mux.HandleFunc("GET "+routePattern(spacesAdminBase, "/{path...}"), renderAdmin(registry))
-	mux.HandleFunc("GET "+routePattern(adminBase, "/{path...}"), renderAdmin(registry))
-	mux.HandleFunc("GET "+routePattern(apiBase, "/"), renderAPIRoot(registry))
-	mux.HandleFunc("GET "+routePattern(spacesAPIBase, "/{path...}"), renderSpaceAPI(registry))
-	mux.HandleFunc("GET "+routePattern(apiBase, "/{path...}"), renderRootAPI(registry))
+	mux.HandleFunc("GET /go-login", authBoundary.renderLogin(registry))
+	mux.HandleFunc("POST /go-login", authBoundary.completeLogin(registry))
+	mux.HandleFunc("GET /go-logout", authBoundary.completeLogout)
+	mux.HandleFunc("POST /go-logout", authBoundary.completeLogout)
+	mux.HandleFunc("GET "+routePattern(adminBase, "/"), authBoundary.protectAdmin(registry, renderAdmin(registry)))
+	mux.HandleFunc("GET "+routePattern(spacesAdminBase, "/"), authBoundary.protectWorkspaceDirectory(registry, renderWorkspaceDirectory(registry)))
+	mux.HandleFunc("GET "+routePattern(spacesAdminBase, "/{path...}"), authBoundary.protectAdmin(registry, renderAdmin(registry)))
+	mux.HandleFunc("GET "+routePattern(adminBase, "/{path...}"), authBoundary.protectAdmin(registry, renderAdmin(registry)))
+	mux.HandleFunc("GET "+routePattern(apiBase, "/"), authBoundary.protectAPI(registry, renderAPIRoot(registry)))
+	mux.HandleFunc("GET "+routePattern(spacesAPIBase, "/{path...}"), authBoundary.protectAPI(registry, renderSpaceAPI(registry)))
+	mux.HandleFunc("GET "+routePattern(apiBase, "/{path...}"), authBoundary.protectAPI(registry, renderRootAPI(registry)))
 }
 
 func renderHome(registry *appschema.Registry) http.HandlerFunc {
@@ -168,6 +183,203 @@ func renderSpaceAPI(registry *appschema.Registry) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusNotFound, apiError("space route not found"))
 	}
+}
+
+type authBoundary struct {
+	session  frameworkauth.CookieSession[contracts.SessionClaims]
+	secret   string
+	grants   policy.MemoryEvaluator
+	password map[string]string
+}
+
+type actionToken struct {
+	Action string `json:"action"`
+	Exp    int64  `json:"exp"`
+}
+
+func authFromOptions(options Options, cfg frameworkapp.Config, registry *appschema.Registry) authBoundary {
+	secret := firstNonEmpty(options.SessionKey, cfg.SessionKey, "appsuite-development-session-secret-32-bytes")
+	return authBoundary{
+		secret: secret,
+		session: frameworkauth.CookieSession[contracts.SessionClaims]{
+			Name:     "appsuite_session",
+			Path:     "/",
+			Secret:   secret,
+			TTL:      8 * time.Hour,
+			SameSite: http.SameSiteLaxMode,
+			HTTPOnly: true,
+		},
+		password: map[string]string{"admin": "admin", "root": "root", "sales": "sales"},
+		grants:   policy.NewMemoryEvaluator(defaultGrants(registry)),
+	}
+}
+
+func defaultGrants(registry *appschema.Registry) map[contracts.PrincipalID]policy.PrincipalGrants {
+	admin := policy.PrincipalGrants{}
+	rootOnly := policy.PrincipalGrants{}
+	salesOnly := policy.PrincipalGrants{}
+	for id, workspace := range registry.Workspaces {
+		caps := []contracts.CapabilityID{workspace.Workspace.Capability, "content.read", "content.write", "admin.access", "crm.access", "crm.lead.read", "crm.lead.write"}
+		admin[id] = policy.CapabilitySet(caps...)
+		if workspace.IsRoot {
+			rootOnly[id] = policy.CapabilitySet(workspace.Workspace.Capability, "content.read", "content.write", "admin.access")
+		}
+		if id == "sales" {
+			salesOnly[id] = policy.CapabilitySet(workspace.Workspace.Capability, "crm.access", "crm.lead.read", "crm.lead.write")
+		}
+	}
+	return map[contracts.PrincipalID]policy.PrincipalGrants{
+		"admin": admin,
+		"root":  rootOnly,
+		"sales": salesOnly,
+	}
+}
+
+func (a authBoundary) renderLogin(registry *appschema.Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		token, err := a.actionToken("login", 10*time.Minute)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `<!doctype html><html><body><main><h1>AppSuite Login</h1><form method="post" action="/go-login"><input type="hidden" name="action_token" value="%s"><input type="hidden" name="next" value="%s/"><label>Username <input name="identifier"></label><label>Password <input name="password" type="password"></label><button type="submit">Sign in</button></form></main></body></html>`, token, normalizeBase(registry.Profile.AdminBase, "/go-admin"))
+	}
+}
+
+func (a authBoundary) completeLogin(registry *appschema.Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		if !a.validActionToken(r.FormValue("action_token"), "login") {
+			http.Error(w, "invalid action token", http.StatusForbidden)
+			return
+		}
+		identifier := strings.TrimSpace(r.FormValue("identifier"))
+		if a.password[identifier] == "" || a.password[identifier] != r.FormValue("password") {
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+		if err := a.session.Issue(w, contracts.SessionClaims{PrincipalID: identifier, ProfileID: registry.Profile.ID}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		next := firstNonEmpty(r.FormValue("next"), normalizeBase(registry.Profile.AdminBase, "/go-admin")+"/")
+		http.Redirect(w, r, next, http.StatusSeeOther)
+	}
+}
+
+func (a authBoundary) completeLogout(w http.ResponseWriter, r *http.Request) {
+	a.session.Clear(w)
+	http.Redirect(w, r, "/go-login", http.StatusSeeOther)
+}
+
+func (a authBoundary) protectWorkspaceDirectory(registry *appschema.Registry, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !a.allow(w, r, registry, registry.WorkspaceRoot, "") {
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (a authBoundary) protectAdmin(registry *appschema.Registry, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workspaceID, _, ok := registry.ResolveAdmin(strings.TrimRight(r.URL.Path, "/"))
+		if !ok {
+			next(w, r)
+			return
+		}
+		capability := contracts.CapabilityID("")
+		if binding, ok := registry.Screens[strings.TrimRight(r.URL.Path, "/")]; ok {
+			capability = binding.Screen.Capability
+		}
+		if !a.allow(w, r, registry, workspaceID, capability) {
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (a authBoundary) protectAPI(registry *appschema.Registry, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workspaceID, _, ok := registry.ResolveAPI(strings.TrimRight(r.URL.Path, "/"))
+		if !ok {
+			next(w, r)
+			return
+		}
+		capability := contracts.CapabilityID("")
+		if binding, ok := registry.APIResource(r.URL.Path); ok {
+			capability = binding.Screen.Capability
+		}
+		if !a.allowJSON(w, r, registry, workspaceID, capability) {
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (a authBoundary) allow(w http.ResponseWriter, r *http.Request, registry *appschema.Registry, workspaceID contracts.WorkspaceID, capability contracts.CapabilityID) bool {
+	if claims, ok := a.session.Read(r); ok {
+		if a.allowed(r, registry, claims, workspaceID, capability) {
+			return true
+		}
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	http.Redirect(w, r, "/go-login", http.StatusSeeOther)
+	return false
+}
+
+func (a authBoundary) allowJSON(w http.ResponseWriter, r *http.Request, registry *appschema.Registry, workspaceID contracts.WorkspaceID, capability contracts.CapabilityID) bool {
+	claims, ok := a.session.Read(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, apiError("authorization required"))
+		return false
+	}
+	if !a.allowed(r, registry, claims, workspaceID, capability) {
+		writeJSON(w, http.StatusForbidden, apiError("missing capability"))
+		return false
+	}
+	return true
+}
+
+func (a authBoundary) allowed(r *http.Request, registry *appschema.Registry, claims contracts.SessionClaims, workspaceID contracts.WorkspaceID, capability contracts.CapabilityID) bool {
+	workspace, ok := registry.Workspaces[workspaceID]
+	if !ok {
+		return false
+	}
+	runtime := contracts.RuntimeContext{ProfileID: claims.ProfileID, WorkspaceID: workspaceID, ModuleID: firstModule(workspace.Workspace.Modules), PrincipalID: contracts.PrincipalID(claims.PrincipalID)}
+	workspaceDecision, err := a.grants.Evaluate(r.Context(), runtime.PolicyRequest("workspace", contracts.PolicyRead, workspace.Workspace.Capability))
+	if err != nil || !workspaceDecision.Allowed {
+		return false
+	}
+	if capability == "" {
+		return true
+	}
+	resourceDecision, err := a.grants.Evaluate(r.Context(), runtime.PolicyRequest("resource", contracts.PolicyRead, capability))
+	return err == nil && resourceDecision.Allowed
+}
+
+func (a authBoundary) actionToken(action string, ttl time.Duration) (string, error) {
+	return frameworkauth.SignedEncode(actionToken{Action: action, Exp: time.Now().Add(ttl).Unix()}, a.secret)
+}
+
+func (a authBoundary) validActionToken(raw string, action string) bool {
+	var token actionToken
+	if err := frameworkauth.SignedDecode(raw, a.secret, &token); err != nil {
+		return false
+	}
+	return token.Action == action && token.Exp >= time.Now().Unix()
+}
+
+func firstModule(modules []contracts.ModuleID) contracts.ModuleID {
+	if len(modules) == 0 {
+		return ""
+	}
+	return modules[0]
 }
 
 func apiDiscovery(registry *appschema.Registry, workspaceID contracts.WorkspaceID) map[string]any {
@@ -309,6 +521,15 @@ func routePattern(base string, suffix string) string {
 		return joined
 	}
 	return strings.TrimRight(joined, "/") + "/{$}"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 type unknownProfileError string

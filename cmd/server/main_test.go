@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ func TestAppSuiteSmokeRoutes(t *testing.T) {
 	}
 	server := httptest.NewServer(application)
 	defer server.Close()
+	cookie := loginCookie(t, server, "admin", "admin")
 
 	for _, tc := range []struct {
 		path string
@@ -31,7 +33,7 @@ func TestAppSuiteSmokeRoutes(t *testing.T) {
 	}{
 		{path: "/", want: "AppSuite"},
 		{path: "/go-admin/", want: "Content Admin"},
-		{path: "/go-admin/spaces", want: "Sales"},
+		{path: "/go-admin/spaces/", want: "Sales"},
 		{path: "/go-admin/spaces/sales", want: "CRM Leads"},
 		{path: "/go-admin/spaces/sales/crm/leads", want: "Leads"},
 		{path: "/go-json/", want: "assembly_path"},
@@ -39,7 +41,7 @@ func TestAppSuiteSmokeRoutes(t *testing.T) {
 		{path: "/go-json/spaces/sales/crm/leads", want: "lead"},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
-			resp, err := http.Get(server.URL + tc.path)
+			resp, err := get(t, server, tc.path, cookie)
 			if err != nil {
 				t.Fatalf("get route: %v", err)
 			}
@@ -69,8 +71,9 @@ func TestInvalidSpaceShortcutDoesNotResolve(t *testing.T) {
 	}
 	server := httptest.NewServer(application)
 	defer server.Close()
+	cookie := loginCookie(t, server, "admin", "admin")
 
-	resp, err := http.Get(server.URL + "/go-admin/sales")
+	resp, err := get(t, server, "/go-admin/sales", cookie)
 	if err != nil {
 		t.Fatalf("get route: %v", err)
 	}
@@ -89,13 +92,14 @@ func TestCustomSuiteSpacesBaseRoutes(t *testing.T) {
 	p.SpacesAPIBase = "/y-json/areas"
 	server := testServer(t, p)
 	defer server.Close()
+	cookie := loginCookie(t, server, "admin", "admin")
 
 	for _, tc := range []struct {
 		path string
 		want string
 	}{
 		{path: "/y-admin/", want: "Content Admin"},
-		{path: "/y-admin/areas", want: "Sales"},
+		{path: "/y-admin/areas/", want: "Sales"},
 		{path: "/y-admin/areas/sales", want: "CRM Leads"},
 		{path: "/y-admin/areas/sales/crm/leads", want: "Leads"},
 		{path: "/y-json/", want: "assembly_path"},
@@ -103,7 +107,7 @@ func TestCustomSuiteSpacesBaseRoutes(t *testing.T) {
 		{path: "/y-json/areas/sales/crm/leads", want: "lead"},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
-			body := getOK(t, server, tc.path)
+			body := getOK(t, server, tc.path, cookie)
 			if !strings.Contains(body, tc.want) {
 				t.Fatalf("response for %s did not contain %q: %s", tc.path, tc.want, body)
 			}
@@ -122,17 +126,18 @@ func TestCustomSuiteSpacesBaseRoutes(t *testing.T) {
 func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 	server := testServer(t, appschema.WorkspacesFullProfile())
 	defer server.Close()
+	cookie := loginCookie(t, server, "admin", "admin")
 
-	root := getJSONMap(t, server, "/go-json/")
+	root := getJSONMap(t, server, "/go-json/", cookie)
 	for _, key := range []string{"profile", "workspace", "api_base", "admin_base", "assembly_path", "resources"} {
 		if _, ok := root[key]; !ok {
 			t.Fatalf("root discovery missing %q: %#v", key, root)
 		}
 	}
-	if strings.Contains(getOK(t, server, "/go-json/"), "/go-json/crm/v1/leads") {
+	if strings.Contains(getOK(t, server, "/go-json/", cookie), "/go-json/crm/v1/leads") {
 		t.Fatalf("AppSuite root API must not mount standalone CRM codex routes")
 	}
-	sales := getJSONMap(t, server, "/go-json/spaces/sales")
+	sales := getJSONMap(t, server, "/go-json/spaces/sales", cookie)
 	for _, key := range []string{"profile", "workspace", "api_base", "admin_base", "assembly_path", "resources"} {
 		if _, ok := sales[key]; !ok {
 			t.Fatalf("sales discovery missing %q: %#v", key, sales)
@@ -141,11 +146,11 @@ func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 	if sales["workspace"] != "sales" || sales["api_base"] != "/go-json/spaces/sales" || sales["admin_base"] != "/go-admin/spaces/sales" {
 		t.Fatalf("unexpected sales discovery bases: %#v", sales)
 	}
-	salesBody := getOK(t, server, "/go-json/spaces/sales")
+	salesBody := getOK(t, server, "/go-json/spaces/sales", cookie)
 	if !strings.Contains(salesBody, "/go-json/spaces/sales/crm/leads") {
 		t.Fatalf("sales discovery must list rebased CRM leads resource: %s", salesBody)
 	}
-	list := getJSONMap(t, server, "/go-json/spaces/sales/crm/leads")
+	list := getJSONMap(t, server, "/go-json/spaces/sales/crm/leads", cookie)
 	for _, key := range []string{"data", "resource", "workspace", "record", "total", "cross_space", "required_cap", "renderer_view"} {
 		if _, ok := list[key]; !ok {
 			t.Fatalf("space list envelope missing %q: %#v", key, list)
@@ -158,7 +163,7 @@ func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 		t.Fatalf("expected CRM namespaced capability: %#v", list)
 	}
 
-	resp, err := http.Get(server.URL + "/go-json/crm/v1/leads")
+	resp, err := get(t, server, "/go-json/crm/v1/leads", cookie)
 	if err != nil {
 		t.Fatalf("get standalone CRM API route: %v", err)
 	}
@@ -167,7 +172,7 @@ func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 		t.Fatalf("AppSuite must not mount standalone CRM API at root, got %d", resp.StatusCode)
 	}
 
-	resp, err = http.Get(server.URL + "/go-json/spaces/sales/unknown")
+	resp, err = get(t, server, "/go-json/spaces/sales/unknown", cookie)
 	if err != nil {
 		t.Fatalf("get unknown API route: %v", err)
 	}
@@ -181,6 +186,42 @@ func TestAppSuiteAPIEnvelopeAndErrors(t *testing.T) {
 	}
 	if _, ok := payload["error"]; !ok {
 		t.Fatalf("error payload must include error key: %#v", payload)
+	}
+}
+
+func TestAppSuiteWorkspaceAuthorization(t *testing.T) {
+	server := testServer(t, appschema.WorkspacesFullProfile())
+	defer server.Close()
+	client := noRedirectClient()
+	resp, err := client.Get(server.URL + "/go-json/spaces/sales/crm/leads")
+	if err != nil {
+		t.Fatalf("get unauth sales API: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated sales API 401, got %d", resp.StatusCode)
+	}
+	rootCookie := loginCookie(t, server, "root", "root")
+	resp, err = get(t, server, "/go-json/spaces/sales/crm/leads", rootCookie)
+	if err != nil {
+		t.Fatalf("get sales as root-only: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("root-only principal must not access sales space, got %d", resp.StatusCode)
+	}
+	salesCookie := loginCookie(t, server, "sales", "sales")
+	resp, err = get(t, server, "/go-json/", salesCookie)
+	if err != nil {
+		t.Fatalf("get root API as sales-only: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("sales-only principal must not access root API, got %d", resp.StatusCode)
+	}
+	body := getOK(t, server, "/go-json/spaces/sales/crm/leads", salesCookie)
+	if !strings.Contains(body, `"workspace":"sales"`) {
+		t.Fatalf("sales principal should access sales API: %s", body)
 	}
 }
 
@@ -213,9 +254,9 @@ func testServer(t *testing.T, p profile.Profile) *httptest.Server {
 	return httptest.NewServer(application)
 }
 
-func getOK(t *testing.T, server *httptest.Server, path string) string {
+func getOK(t *testing.T, server *httptest.Server, path string, cookie *http.Cookie) string {
 	t.Helper()
-	resp, err := http.Get(server.URL + path)
+	resp, err := get(t, server, path, cookie)
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
@@ -230,9 +271,9 @@ func getOK(t *testing.T, server *httptest.Server, path string) string {
 	return string(body)
 }
 
-func getJSONMap(t *testing.T, server *httptest.Server, path string) map[string]any {
+func getJSONMap(t *testing.T, server *httptest.Server, path string, cookie *http.Cookie) map[string]any {
 	t.Helper()
-	resp, err := http.Get(server.URL + path)
+	resp, err := get(t, server, path, cookie)
 	if err != nil {
 		t.Fatalf("get %s: %v", path, err)
 	}
@@ -245,4 +286,67 @@ func getJSONMap(t *testing.T, server *httptest.Server, path string) map[string]a
 		t.Fatalf("decode %s: %v", path, err)
 	}
 	return payload
+}
+
+func get(t *testing.T, server *httptest.Server, path string, cookie *http.Cookie) (*http.Response, error) {
+	t.Helper()
+	request, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if cookie != nil {
+		request.AddCookie(cookie)
+	}
+	return noRedirectClient().Do(request)
+}
+
+func loginCookie(t *testing.T, server *httptest.Server, identifier string, password string) *http.Cookie {
+	t.Helper()
+	body := getOK(t, server, "/go-login", nil)
+	token := hiddenValue(body, "action_token")
+	form := url.Values{}
+	form.Set("action_token", token)
+	form.Set("identifier", identifier)
+	form.Set("password", password)
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/go-login", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := noRedirectClient().Do(request)
+	if err != nil {
+		t.Fatalf("post login: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusSeeOther {
+		payload, _ := io.ReadAll(response.Body)
+		t.Fatalf("login returned %d: %s", response.StatusCode, payload)
+	}
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == "appsuite_session" {
+			return cookie
+		}
+	}
+	t.Fatalf("login did not issue appsuite_session")
+	return nil
+}
+
+func noRedirectClient() *http.Client {
+	return &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+}
+
+func hiddenValue(body string, name string) string {
+	needle := `name="` + name + `" value="`
+	start := strings.Index(body, needle)
+	if start < 0 {
+		return ""
+	}
+	start += len(needle)
+	end := strings.Index(body[start:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return body[start : start+end]
 }
