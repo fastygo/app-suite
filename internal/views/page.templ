@@ -4,6 +4,8 @@ import (
 	"github.com/fastygo/app-suite/internal/appschema"
 	"github.com/fastygo/platform/pkg/render"
 	platformtempl "github.com/fastygo/platform/pkg/renderers/templ"
+	"github.com/fastygo/templ/components/card"
+	"github.com/fastygo/templ/ui/button"
 )
 
 templ Page(title string, screen render.ScreenModel, switcher appschema.WorkspaceSwitcherModel) {
@@ -17,21 +19,21 @@ templ Page(title string, screen render.ScreenModel, switcher appschema.Workspace
 		</head>
 		<body class="min-h-screen bg-background text-foreground antialiased">
 			<div class="flex min-h-screen">
-				<aside class="w-72 border-r border-border bg-muted/20 p-4">
-					<a class="mb-6 block text-lg font-semibold" href={ templ.SafeURL(switcher.RootAdminLink) }>AppSuite</a>
-					<div class="mb-4 rounded-lg border border-border bg-card p-3 text-sm">
-						<p class="text-xs uppercase tracking-wide text-muted-foreground">Current workspace</p>
-						<p class="font-medium">{ switcher.CurrentTitle }</p>
-						<p class="text-muted-foreground">{ switcher.CurrentCategory }</p>
-					</div>
-					<nav class="space-y-1 text-sm">
+				<aside class="w-72 border-r border-border bg-muted/20 p-4" aria-label="Workspace navigation">
+					@card.Card(card.CardProps{Variant: "muted", Class: "mb-4"}) {
+						@card.CardHeader(card.CardHeaderProps{Class: "space-y-1"}) {
+							@card.CardTitle(card.CardTitleProps{Order: 2}, "AppSuite")
+							@card.CardDescription(card.CardDescriptionProps{}, "Current workspace: "+switcher.CurrentTitle)
+						}
+					}
+					<nav class="space-y-1 text-sm" aria-label="Suite navigation">
 						@NavLink(switcher.RootAdminLink, "Root admin")
 						@NavLink(switcher.DirectoryLink, "Workspace directory")
 					</nav>
 					if len(switcher.Available) > 0 {
 						<div class="mt-6 space-y-2">
 							<p class="px-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Spaces</p>
-							<nav class="space-y-1 text-sm">
+							<nav class="space-y-1 text-sm" aria-label="Task spaces">
 								for _, item := range switcher.Available {
 									@NavLink(item.DefaultPath + "/", item.Title)
 								}
@@ -44,6 +46,7 @@ templ Page(title string, screen render.ScreenModel, switcher appschema.Workspace
 						<header class="space-y-1">
 							<p class="text-sm text-muted-foreground">Schema-driven multi-profile Platform preview</p>
 							<h1 class="text-2xl font-semibold tracking-tight">{ screen.Title }</h1>
+							<p class="text-xs text-muted-foreground">Workspace context is passed through Platform screen metadata.</p>
 						</header>
 						@platformtempl.Screen(screen)
 					</div>
@@ -64,9 +67,14 @@ templ WorkspaceDirectory(model appschema.WorkspaceDirectoryModel, switcher appsc
 		</head>
 		<body class="min-h-screen bg-background text-foreground antialiased">
 			<div class="flex min-h-screen">
-				<aside class="w-72 border-r border-border bg-muted/20 p-4">
-					<a class="mb-6 block text-lg font-semibold" href={ templ.SafeURL(switcher.RootAdminLink) }>AppSuite</a>
-					<nav class="space-y-1 text-sm">
+				<aside class="w-72 border-r border-border bg-muted/20 p-4" aria-label="Workspace navigation">
+					@card.Card(card.CardProps{Variant: "muted", Class: "mb-4"}) {
+						@card.CardHeader(card.CardHeaderProps{Class: "space-y-1"}) {
+							@card.CardTitle(card.CardTitleProps{Order: 2}, "AppSuite")
+							@card.CardDescription(card.CardDescriptionProps{}, "Workspace directory")
+						}
+					}
+					<nav class="space-y-1 text-sm" aria-label="Suite navigation">
 						@NavLink(switcher.RootAdminLink, "Root admin")
 						@NavLink(switcher.DirectoryLink, "Workspace directory")
 					</nav>
@@ -123,5 +131,7 @@ templ Home(profileTitle string) {
 }
 
 templ NavLink(href string, label string) {
-	<a class="block rounded-md px-3 py-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground" href={ templ.SafeURL(href) }>{ label }</a>
+	@button.Button(button.ButtonProps{Variant: "ghost", Href: href, Class: "w-full justify-start text-muted-foreground hover:text-accent-foreground"}) {
+		{ label }
+	}
 }
