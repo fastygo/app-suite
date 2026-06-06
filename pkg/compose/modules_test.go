@@ -14,7 +14,7 @@ func TestDefaultModulesUseAppBundles(t *testing.T) {
 		t.Fatalf("second bundle module = %q, want crm", bundles[1].Manifest().ModuleID)
 	}
 	modules := DefaultModules()
-	if len(modules) != 3 {
-		t.Fatalf("modules = %d, want cms + crm + monitoring", len(modules))
+	if len(modules) != 5 {
+		t.Fatalf("modules = %d, want cms + crm + monitoring + support + chat", len(modules))
 	}
 }

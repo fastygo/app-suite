@@ -38,7 +38,7 @@ APPSUITE_PROFILE=crm-leads bun go
 - `gocms-workspaces-full`: website at `/`, root admin at `/go-admin`, root API at `/go-json`, spaces under `/go-admin/spaces/{space}` and `/go-json/spaces/{space}`.
 - `headless`: API-first CMS profile.
 - `local-offline`: CRM profile with local/offline metadata.
-- `demo-suite`: CMS, CRM, and monitoring demo profile.
+- `demo-suite`: CMS, CRM, monitoring, support, and chat demo modules.
 - `optional-remote-services`: fixture profile for optional remote spaces.
 
 JSON profile fixtures live in `profiles/`.

@@ -7,7 +7,9 @@ require (
 	github.com/fastygo/app-crm v0.0.0
 	github.com/fastygo/app-gocms v0.0.0
 	github.com/fastygo/framework v0.0.0
+	github.com/fastygo/module-chat v0.0.0
 	github.com/fastygo/module-monitoring v0.0.0
+	github.com/fastygo/module-support v0.0.0
 	github.com/fastygo/platform v0.0.0
 	github.com/fastygo/templ v0.0.0
 )
@@ -45,6 +47,10 @@ replace github.com/fastygo/app-gocms => ../@AppCMS
 replace github.com/fastygo/framework => ../@Framework
 
 replace github.com/fastygo/module-monitoring => ../@ModuleMonitoring
+
+replace github.com/fastygo/module-support => ../@ModuleSupport
+
+replace github.com/fastygo/module-chat => ../@ModuleChat
 
 replace github.com/fastygo/platform => ../@Platform
 
